@@ -1,4 +1,4 @@
-
+from http.client import HTTPException
 from typing import Dict
 from requests import request
 import streamlit as st
@@ -10,10 +10,9 @@ from googleapiclient.discovery import build
 logging.basicConfig(level=logging.INFO)
 logger = logging.getLogger(__name__)
 
-SERVICE_ACCOUNT_FILE = "ktubot-114e855ff83f.json"
 GOOGLE_DRIVE_FOLDER_ID="15gnvPIxP4oqFghT1f-3lyciYApL7Qget"
-credentials = service_account.Credentials.from_service_account_file(
-    SERVICE_ACCOUNT_FILE,
+credentials = service_account.Credentials.from_service_account_info(
+    dict(st.secrets["gcp_service_account"]),  # Convert AttrDict to regular dict
     scopes=["https://www.googleapis.com/auth/drive.readonly"]
 )
 
@@ -30,21 +29,13 @@ def list_drive_folder(folder_id):
         return results.get('files', [])
     except Exception as e:
         logger.error(f"Error listing Drive folder: {str(e)}")
-        st.error("Error accessing Google Drive. Please check the logs for more details.")
-        st.stop()  # This will stop the app execution
-        return []  # This line won't be reached but makes the linter happy
+        raise HTTPException(status_code=500, detail="Error accessing Google Drive")
     
 def get_file_content(file_id):
     """Get content of a file from Google Drive"""
-    try:
-        request = drive_service.files().get_media(fileId=file_id)
-        file_content = request.execute()
-        return file_content
-    except Exception as e:
-        logger.error(f"Error getting file content: {str(e)}")
-        st.error("Error accessing file content. Please check the logs for more details.")
-        st.stop()
-        return None
+    request = drive_service.files().get_media(fileId=file_id)
+    file_content = request.execute()
+    return file_content
 
 def load_subject_data(department: str, semester: str, subject: str) -> Dict:
     cache_key = f"{department}_{semester}_{subject}"
@@ -52,37 +43,19 @@ def load_subject_data(department: str, semester: str, subject: str) -> Dict:
     if cache_key in subject_cache:
         return subject_cache[cache_key]
     
-    try:
-        deptfolders = list_drive_folder(GOOGLE_DRIVE_FOLDER_ID)
-        dept_folder = next((f for f in deptfolders if f['name'] == department and f['mimeType'] == 'application/vnd.google-apps.folder'), None)
-        
-        if not dept_folder:
-            st.error(f"Department folder '{department}' not found in Google Drive.")
-            st.stop()
-            
-        semester_folders = list_drive_folder(dept_folder['id'])
-        semester_folder = next((f for f in semester_folders if f['name'] == semester and f['mimeType'] == 'application/vnd.google-apps.folder'), None)
-        
-        if not semester_folder:
-            st.error(f"Semester folder '{semester}' not found in department '{department}'.")
-            st.stop()
-            
-        subject_files = list_drive_folder(semester_folder['id'])
-        subject_file = next((f for f in subject_files if f['name'] == f"{subject}.json"), None)
-        
-        if not subject_file:
-            st.error(f"Subject file '{subject}.json' not found in semester '{semester}'.")
-            st.stop()
-            
-        file_content = get_file_content(subject_file['id'])
-        data = json.loads(file_content.decode('utf-8'))
-        subject_cache[cache_key] = data
-        return data
-    except Exception as e:
-        logger.error(f"Error loading subject data: {str(e)}")
-        st.error("Error loading subject data. Please check the logs for more details.")
-        st.stop()
-        return {}
+    deptfolders = list_drive_folder(GOOGLE_DRIVE_FOLDER_ID)
+    dept_folder = next((f for f in deptfolders if f['name'] == department and f['mimeType'] == 'application/vnd.google-apps.folder'), None)
+    
+    semester_folders = list_drive_folder(dept_folder['id'])
+    semester_folder = next((f for f in semester_folders if f['name'] == semester and f['mimeType'] == 'application/vnd.google-apps.folder'), None)
+    
+    subject_files = list_drive_folder(semester_folder['id'])
+    subject_file = next((f for f in subject_files if f['name'] == f"{subject}.json"), None)
+    
+    file_content = get_file_content(subject_file['id'])
+    data = json.loads(file_content.decode('utf-8'))
+    subject_cache[cache_key] = data
+    return data
 
 def get_departments():
     folders = list_drive_folder(GOOGLE_DRIVE_FOLDER_ID)
@@ -497,7 +470,7 @@ def load_custom_css():
     /* Content Text */
     .content-text {
         line-height: 1.6;
-        color: #4a5568;
+        color: #cccccc;
         margin-bottom: 1rem;
     }
     
@@ -763,3 +736,11 @@ if subject:
                                     """, unsafe_allow_html=True)
                                     st.image(url, use_container_width=True)
 
+else:
+    # Welcome message when no subject is selected
+    st.markdown("""
+    <div style="text-align: center; padding: 3rem; color: #718096;">
+        <h2>👋 Welcome to Modern Learning Hub</h2>
+        <p>Select a department, semester, and subject from the sidebar to get started!</p>
+    </div>
+    """, unsafe_allow_html=True)
