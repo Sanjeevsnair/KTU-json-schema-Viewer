@@ -1,3 +1,4 @@
+from http.client import HTTPException
 from typing import Dict
 from requests import request
 import streamlit as st
@@ -6,37 +7,17 @@ import logging
 from google.oauth2 import service_account
 from googleapiclient.discovery import build
 
-
-
 logging.basicConfig(level=logging.INFO)
 logger = logging.getLogger(__name__)
 
 SERVICE_ACCOUNT_FILE = "ktubot-114e855ff83f.json"
 GOOGLE_DRIVE_FOLDER_ID="15gnvPIxP4oqFghT1f-3lyciYApL7Qget"
+credentials = service_account.Credentials.from_service_account_file(
+    SERVICE_ACCOUNT_FILE,
+    scopes=["https://www.googleapis.com/auth/drive.readonly"]
+)
 
-from google.auth.exceptions import RefreshError
-from google.api_core.exceptions import GoogleAPIError
-
-def initialize_drive_service():
-    try:
-        credentials = service_account.Credentials.from_service_account_file(
-            SERVICE_ACCOUNT_FILE,
-            scopes=["https://www.googleapis.com/auth/drive.readonly"]
-        )
-        return build('drive', 'v3', credentials=credentials)
-    except Exception as e:
-        logger.error(f"Failed to initialize Drive service: {str(e)}")
-        st.error("Failed to initialize Google Drive access. Please check service account credentials.")
-        st.stop()  # Stop the app if we can't authenticate
-
-# Initialize at startup
-try:
-    drive_service = initialize_drive_service()
-except Exception as e:
-    logger.error(f"Critical initialization error: {str(e)}")
-    st.error("Application failed to initialize. Please check logs.")
-    st.stop()
-
+drive_service = build('drive', 'v3', credentials=credentials)
 subject_cache: Dict[str, Dict] = {}
 
 def list_drive_folder(folder_id):
@@ -47,18 +28,9 @@ def list_drive_folder(folder_id):
             fields="files(id, name, mimeType)"
         ).execute()
         return results.get('files', [])
-    except RefreshError as e:
-        logger.error(f"Authentication failed: {str(e)}")
-        st.error("Google Drive authentication failed. Please check service account credentials.")
-        st.stop()
-    except GoogleAPIError as e:
-        logger.error(f"Google API error: {str(e)}")
-        st.error("Error accessing Google Drive API. Please try again later.")
-        st.stop()
     except Exception as e:
-        logger.error(f"Unexpected error listing Drive folder: {str(e)}")
-        st.error("An unexpected error occurred. Please check logs.")
-        st.stop()
+        logger.error(f"Error listing Drive folder: {str(e)}")
+        raise HTTPException(status_code=500, detail="Error accessing Google Drive")
     
 def get_file_content(file_id):
     """Get content of a file from Google Drive"""
