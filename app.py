@@ -1,4 +1,3 @@
-from http.client import HTTPException
 from typing import Dict
 from requests import request
 import streamlit as st
@@ -6,6 +5,8 @@ import json
 import logging
 from google.oauth2 import service_account
 from googleapiclient.discovery import build
+
+
 
 logging.basicConfig(level=logging.INFO)
 logger = logging.getLogger(__name__)
@@ -30,7 +31,7 @@ def list_drive_folder(folder_id):
         return results.get('files', [])
     except Exception as e:
         logger.error(f"Error listing Drive folder: {str(e)}")
-        raise HTTPException(status_code=500, detail="Error accessing Google Drive")
+        raise Exception("Error accessing Google Drive")
     
 def get_file_content(file_id):
     """Get content of a file from Google Drive"""
