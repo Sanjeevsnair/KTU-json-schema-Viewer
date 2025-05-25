@@ -11,10 +11,14 @@ logging.basicConfig(level=logging.INFO)
 logger = logging.getLogger(__name__)
 
 GOOGLE_DRIVE_FOLDER_ID="15gnvPIxP4oqFghT1f-3lyciYApL7Qget"
-credentials = service_account.Credentials.from_service_account_info(
-    dict(st.secrets["gcp_service_account"]),  # Convert AttrDict to regular dict
-    scopes=["https://www.googleapis.com/auth/drive.readonly"]
-)
+try:
+    credentials = service_account.Credentials.from_service_account_info(
+        dict(st.secrets["gcp_service_account"]),
+        scopes=["https://www.googleapis.com/auth/drive.readonly"]
+    )
+except Exception as e:
+    st.error(f"Failed to load Google Cloud credentials: {str(e)}")
+    st.stop()
 
 drive_service = build('drive', 'v3', credentials=credentials)
 subject_cache: Dict[str, Dict] = {}
