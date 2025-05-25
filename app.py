@@ -30,13 +30,21 @@ def list_drive_folder(folder_id):
         return results.get('files', [])
     except Exception as e:
         logger.error(f"Error listing Drive folder: {str(e)}")
-        raise HTTPException(status_code=500, detail="Error accessing Google Drive")
+        st.error("Error accessing Google Drive. Please check the logs for more details.")
+        st.stop()  # This will stop the app execution
+        return []  # This line won't be reached but makes the linter happy
     
 def get_file_content(file_id):
     """Get content of a file from Google Drive"""
-    request = drive_service.files().get_media(fileId=file_id)
-    file_content = request.execute()
-    return file_content
+    try:
+        request = drive_service.files().get_media(fileId=file_id)
+        file_content = request.execute()
+        return file_content
+    except Exception as e:
+        logger.error(f"Error getting file content: {str(e)}")
+        st.error("Error accessing file content. Please check the logs for more details.")
+        st.stop()
+        return None
 
 def load_subject_data(department: str, semester: str, subject: str) -> Dict:
     cache_key = f"{department}_{semester}_{subject}"
@@ -44,19 +52,37 @@ def load_subject_data(department: str, semester: str, subject: str) -> Dict:
     if cache_key in subject_cache:
         return subject_cache[cache_key]
     
-    deptfolders = list_drive_folder(GOOGLE_DRIVE_FOLDER_ID)
-    dept_folder = next((f for f in deptfolders if f['name'] == department and f['mimeType'] == 'application/vnd.google-apps.folder'), None)
-    
-    semester_folders = list_drive_folder(dept_folder['id'])
-    semester_folder = next((f for f in semester_folders if f['name'] == semester and f['mimeType'] == 'application/vnd.google-apps.folder'), None)
-    
-    subject_files = list_drive_folder(semester_folder['id'])
-    subject_file = next((f for f in subject_files if f['name'] == f"{subject}.json"), None)
-    
-    file_content = get_file_content(subject_file['id'])
-    data = json.loads(file_content.decode('utf-8'))
-    subject_cache[cache_key] = data
-    return data
+    try:
+        deptfolders = list_drive_folder(GOOGLE_DRIVE_FOLDER_ID)
+        dept_folder = next((f for f in deptfolders if f['name'] == department and f['mimeType'] == 'application/vnd.google-apps.folder'), None)
+        
+        if not dept_folder:
+            st.error(f"Department folder '{department}' not found in Google Drive.")
+            st.stop()
+            
+        semester_folders = list_drive_folder(dept_folder['id'])
+        semester_folder = next((f for f in semester_folders if f['name'] == semester and f['mimeType'] == 'application/vnd.google-apps.folder'), None)
+        
+        if not semester_folder:
+            st.error(f"Semester folder '{semester}' not found in department '{department}'.")
+            st.stop()
+            
+        subject_files = list_drive_folder(semester_folder['id'])
+        subject_file = next((f for f in subject_files if f['name'] == f"{subject}.json"), None)
+        
+        if not subject_file:
+            st.error(f"Subject file '{subject}.json' not found in semester '{semester}'.")
+            st.stop()
+            
+        file_content = get_file_content(subject_file['id'])
+        data = json.loads(file_content.decode('utf-8'))
+        subject_cache[cache_key] = data
+        return data
+    except Exception as e:
+        logger.error(f"Error loading subject data: {str(e)}")
+        st.error("Error loading subject data. Please check the logs for more details.")
+        st.stop()
+        return {}
 
 def get_departments():
     folders = list_drive_folder(GOOGLE_DRIVE_FOLDER_ID)
